@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Class Timer</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+  :root{
+    --ink:#0E1116;
+    --paper:#F4F6F8;
+    --amber:#F2A93B;
+    --mute:#8A94A3;
+    --line:rgba(244,246,248,.16);
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:var(--ui);background:#12161C;color:var(--paper);
+    -webkit-font-smoothing:antialiased;user-select:none;cursor:default;
+  }
+  #stage{position:relative;height:100%;width:100%;overflow:hidden}
+  #cv{position:absolute;inset:0;display:block;width:100%;height:100%}
+
+  #ui{
+    position:absolute;inset:auto 0 0 0;display:flex;align-items:center;
+    justify-content:center;gap:6px;padding:8px;opacity:0;transform:translateY(6px);
+    transition:opacity .18s ease,transform .18s ease;pointer-events:none;
+  }
+  #ui.show{opacity:1;transform:none;pointer-events:auto}
+
+  button{
+    font:inherit;font-size:12px;font-weight:600;color:var(--paper);
+    background:rgba(14,17,22,.86);border:1px solid var(--line);border-radius:6px;
+    padding:6px 11px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease;
+  }
+  button:hover{background:rgba(38,44,54,.94)}
+  button:active{background:rgba(58,66,80,.96)}
+  button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  button.pri{background:rgba(242,169,59,.94);color:#171208;border-color:transparent}
+  button.pri:hover{background:rgba(247,182,84,.98)}
+
+  #panel{
+    position:absolute;inset:0;background:#0E1116;padding:0;
+    overflow-y:auto;display:none;font-size:12px;
+  }
+  #panel.show{display:block}
+  .pad{padding:14px}
+  #panel h2{
+    font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--mute);margin:0 0 7px;
+  }
+  .row{margin-bottom:15px}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{
+    font-size:11px;font-weight:600;padding:5px 9px;border-radius:5px;
+    border:1px solid var(--line);background:transparent;color:var(--mute);cursor:pointer;
+  }
+  .chip:hover{color:var(--paper);border-color:rgba(244,246,248,.35)}
+  .chip[aria-pressed="true"]{background:var(--paper);color:var(--ink);border-color:transparent}
+  .chip:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .swatch{width:28px;height:28px;padding:0;border-radius:6px;border:1px solid var(--line)}
+  .swatch[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink),0 0 0 4px var(--paper)}
+  .field{display:flex;align-items:center;gap:9px;margin-top:7px}
+  .field label{color:var(--mute);min-width:70px;font-weight:500}
+  input[type=range]{flex:1;accent-color:var(--amber);height:18px}
+  input[type=number],input[type=text]{
+    font:inherit;padding:6px 8px;border-radius:5px;border:1px solid var(--line);
+    background:rgba(244,246,248,.06);color:var(--paper);
+  }
+  input[type=number]{width:62px}
+  #in-hex{width:96px;font-family:ui-monospace,Consolas,monospace;text-transform:uppercase}
+  #in-hex.bad{border-color:#E8483B}
+  #in-label,#in-endmsg{flex:1;min-width:0}
+  input[type=color]{
+    width:28px;height:28px;padding:0;border:1px solid var(--line);
+    border-radius:6px;background:transparent;cursor:pointer;
+  }
+  .val{color:var(--paper);min-width:44px;text-align:right;font-size:11px}
+  .foot{
+    position:sticky;bottom:0;background:#0E1116;border-top:1px solid var(--line);
+    padding:10px 14px;display:flex;justify-content:space-between;
+    align-items:center;gap:8px;
+  }
+  .hint{color:var(--mute);font-size:10px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+
+  <div id="ui">
+    <button id="btn-main" class="pri">Start</button>
+    <button id="btn-reset">Reset</button>
+    <button id="btn-open" aria-label="Settings">Settings</button>
+    <span id="build" style="font-size:10px;color:var(--mute);padding:0 4px">v4</span>
+  </div>
+
+  <div id="panel">
+    <div class="pad">
+
+      <div class="row">
+        <h2>Length</h2>
+        <div class="chips" id="presets"></div>
+        <div class="field">
+          <label for="in-min">Custom</label>
+          <input type="number" id="in-min" min="0" max="180" step="1" value="5">
+          <span class="hint">min</span>
+          <input type="number" id="in-sec" min="0" max="59" step="1" value="0">
+          <span class="hint">sec</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <h2>Clock face</h2>
+        <div class="chips" id="faces"></div>
+      </div>
+
+      <div class="row">
+        <h2>Font</h2>
+        <div class="chips" id="fonts"></div>
+      </div>
+
+      <div class="row">
+        <h2>Background</h2>
+        <div class="chips" id="bgs"></div>
+        <div class="field">
+          <label for="in-hex">Hex</label>
+          <input type="text" id="in-hex" maxlength="7" value="#12161C" spellcheck="false">
+          <input type="color" id="in-pick" value="#12161C">
+          <span class="hint" style="flex:1">Match your slide and the box disappears.</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <h2>Number color</h2>
+        <div class="chips" id="colors"></div>
+      </div>
+
+      <div class="row">
+        <h2>Panel style</h2>
+        <div class="chips" id="panels"></div>
+      </div>
+
+      <div class="row">
+        <h2>Size</h2>
+        <div class="field">
+          <label for="in-scale">Text size</label>
+          <input type="range" id="in-scale" min="40" max="180" step="5" value="100">
+          <span class="val" id="v-scale">100%</span>
+        </div>
+        <div class="field">
+          <label for="in-warn">Warn at</label>
+          <input type="range" id="in-warn" min="0" max="180" step="5" value="60">
+          <span class="val" id="v-warn">60s</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <h2>Caption</h2>
+        <div class="field">
+          <label for="in-label">Top text</label>
+          <input type="text" id="in-label" maxlength="40" placeholder="e.g. Pair discussion">
+        </div>
+        <div class="field">
+          <label for="in-endmsg">At zero</label>
+          <input type="text" id="in-endmsg" maxlength="40" placeholder="Time's up">
+        </div>
+      </div>
+
+      <div class="row">
+        <h2>Counting</h2>
+        <div class="chips" id="modes"></div>
+      </div>
+
+      <div class="row">
+        <h2>At zero</h2>
+        <div class="chips" id="ends"></div>
+      </div>
+
+      <div class="row">
+        <h2>Extras</h2>
+        <div class="chips" id="extras"></div>
+      </div>
+
+    </div>
+
+    <div class="foot">
+      <p class="hint">Space pauses, R resets.<br>Click the timer once in a slideshow.</p>
+      <button id="btn-close" class="pri">Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- state
+
+  var S = {
+    duration: 300,
+    face: 'digital',
+    font: 'sans',
+    color: 'auto',
+    bg: '#12161C',
+    panel: 'none',
+    scale: 100,
+    warn: 60,
+    shadow: true,
+    label: '',
+    endMsg: '',
+    end: 'over',
+    countUp: false,
+    flash: true,
+    cues: false
+  };
+
+  var running = false, endAt = 0, startedAt = 0, left = S.duration, up = 0;
+  var raf = 0, lastShown = null, lastPaintAt = 0, audioCtx = null;
+  var chimed = false, cueHalf = false, cueMin = false, flashUntil = 0;
+
+  var el = function (id) { return document.getElementById(id); };
+  var stage = el('stage'), ui = el('ui'), panel = el('panel');
+  var cv = el('cv'), ctx = cv.getContext('2d');
+  var W = 400, H = 260;
+
+  var FONTS = {
+    sans:     { label: 'Sans',   css: '"Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif', w: 600, gen: 'sans-serif' },
+    wide:     { label: 'Wide',   css: 'Verdana,Geneva,"DejaVu Sans",sans-serif',                w: 600, gen: 'sans-serif' },
+    hand:     { label: 'Marker', css: '"Ink Free","Bradley Hand","Segoe Print","Comic Sans MS",cursive', w: 700, gen: 'cursive' },
+    georgia:  { label: 'Georgia',  css: 'Georgia,"Times New Roman",serif',                        w: 600, gen: 'serif' },
+    palatino: { label: 'Palatino', css: '"Palatino Linotype","Book Antiqua",Palatino,Georgia,serif', w: 600, gen: 'serif' },
+    cambria:  { label: 'Cambria',  css: 'Cambria,Constantia,Georgia,serif',                       w: 600, gen: 'serif' }
+  };
+
+  var SWATCHES = ['#FFFFFF', '#F7F3E8', '#E9ECEF', '#12161C', '#000000',
+                  '#16243D', '#17321F', '#3B1220'];
+
+  // ---------------------------------------------------------------- color
+
+  function clampHex(v) {
+    if (!v) return null;
+    v = v.trim();
+    if (v.charAt(0) !== '#') v = '#' + v;
+    if (/^#[0-9a-fA-F]{3}$/.test(v)) {
+      v = '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3];
+    }
+    return /^#[0-9a-fA-F]{6}$/.test(v) ? v.toUpperCase() : null;
+  }
+  function rgb(hex) {
+    return [parseInt(hex.substr(1, 2), 16),
+            parseInt(hex.substr(3, 2), 16),
+            parseInt(hex.substr(5, 2), 16)];
+  }
+  function lum(hex) {
+    var c = rgb(hex);
+    return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+  }
+  function mix(a, b, t) {
+    var x = rgb(a), y = rgb(b), o = '#';
+    for (var i = 0; i < 3; i++) {
+      var v = Math.round(x[i] + (y[i] - x[i]) * t).toString(16);
+      o += v.length < 2 ? '0' + v : v;
+    }
+    return o.toUpperCase();
+  }
+  var isLight = function () { return lum(S.bg) > 0.55; };
+
+  // auto colour adapts to the background so numbers are always readable
+  function activeColor() {
+    if (S.color !== 'auto') return S.color;
+    var light = isLight();
+    if (!S.countUp) {
+      if (left <= 10) return light ? '#B3261E' : '#FF6B5E';
+      if (S.warn > 0 && left <= S.warn) return light ? '#9A6206' : '#F2A93B';
+    }
+    return light ? '#12161C' : '#F4F6F8';
+  }
+  function dimColor() { return mix(activeColor(), S.bg, 0.45); }
+  function faintColor() { return mix(activeColor(), S.bg, 0.78); }
+
+  // ------------------------------------------------------------ formatting
+
+  function clock(sec) {
+    var neg = sec < 0, t = Math.abs(Math.ceil(sec));
+    var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return (neg ? '+' : '') + (h > 0 ? h + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s));
+  }
+
+  function words(sec) {
+    if (sec <= 0) {
+      var o = Math.floor(-sec);
+      if (o < 5) return S.endMsg || "Time's up";
+      return o < 60 ? o + ' seconds over' : Math.floor(o / 60) + ' minutes over';
+    }
+    var t = Math.ceil(sec);
+    if (t <= 10) return t + (t === 1 ? ' second left' : ' seconds left');
+    if (t < 60) return Math.floor(t / 5) * 5 + ' seconds left';
+    if (t < 120) return 'About a minute left';
+    return Math.floor(t / 60) + ' minutes left';
+  }
+
+  // ---------------------------------------------------------------- canvas
+
+  function resize() {
+    var dpr = Math.min(3, window.devicePixelRatio || 1);
+    W = Math.max(1, stage.clientWidth);
+    H = Math.max(1, stage.clientHeight);
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // Set the font and confirm the engine took it. A rejected family list leaves
+  // the previous font active, which silently draws text at the wrong size.
+  function setFont(px, key) {
+    var f = FONTS[key] || FONTS.sans;
+    var head = f.w + ' ' + px + 'px ';
+    ctx.font = head + f.css;
+    if (ctx.font.indexOf('px') === -1 || ctx.measureText('0').width < px * 0.12) {
+      ctx.font = head + f.gen;
+    }
+  }
+
+  // Digits are drawn in equal-width cells so the timer never jitters as the
+  // numbers change. Proportional fonts otherwise shift the whole display.
+  function cells(text, px, key) {
+    setFont(px, key);
+    var cell = 0, i;
+    for (i = 0; i < 10; i++) cell = Math.max(cell, ctx.measureText('' + i).width);
+    var ws = [], total = 0;
+    for (i = 0; i < text.length; i++) {
+      var c = text.charAt(i);
+      var w = (c >= '0' && c <= '9') ? cell : ctx.measureText(c).width;
+      ws.push(w); total += w;
+    }
+    return { ws: ws, total: total };
+  }
+
+  function fitDigits(text, key, maxW, maxH) {
+    var px = maxH;
+    for (var i = 0; i < 7; i++) {
+      var m = cells(text, px, key);
+      if (!m.total || m.total <= maxW) break;
+      px = px * (maxW / m.total) * 0.99;
+    }
+    return Math.max(6, px);
+  }
+
+  function fitText(text, key, maxW, maxH) {
+    var px = maxH;
+    for (var i = 0; i < 7; i++) {
+      setFont(px, key);
+      var w = ctx.measureText(text).width;
+      if (!w || w <= maxW) break;
+      px = px * (maxW / w) * 0.99;
+    }
+    return Math.max(6, px);
+  }
+
+  function shadowOn() {
+    if (!S.shadow) return;
+    ctx.shadowColor = isLight() ? 'rgba(14,17,22,.22)' : 'rgba(0,0,0,.45)';
+    ctx.shadowBlur = Math.max(2, H * 0.022);
+    ctx.shadowOffsetY = Math.max(1, H * 0.006);
+  }
+  function shadowOff() {
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  }
+
+  function drawDigits(text, cx, cy, px, key, color) {
+    var m = cells(text, px, key);
+    var x = cx - m.total / 2;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    shadowOn();
+    for (var i = 0; i < text.length; i++) {
+      ctx.fillText(text.charAt(i), x + m.ws[i] / 2, cy);
+      x += m.ws[i];
+    }
+    shadowOff();
+  }
+
+  function drawLine(text, cx, cy, px, key, color) {
+    setFont(px, key);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    shadowOn();
+    ctx.fillText(text, cx, cy);
+    shadowOff();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ----------------------------------------------------------------- faces
+
+  function drawDigital(txt, col, box, k) {
+    var px = fitDigits(txt, S.font, box.w * 0.94, box.h * 0.82) * k;
+    drawDigits(txt, box.x + box.w / 2, box.y + box.h / 2, px, S.font, col);
+  }
+
+  function drawWords(txt, col, box, k) {
+    var lines = [txt];
+    var px = fitText(txt, S.font, box.w * 0.92, box.h * 0.52);
+    if (px < box.h * 0.28 && txt.indexOf(' ') > 0) {
+      var parts = txt.split(' '), best = null, diff = 1e9;
+      for (var i = 1; i < parts.length; i++) {
+        var a = parts.slice(0, i).join(' '), b = parts.slice(i).join(' ');
+        var d = Math.abs(a.length - b.length);
+        if (d < diff) { diff = d; best = [a, b]; }
+      }
+      lines = best;
+      px = Math.min(fitText(lines[0], S.font, box.w * 0.92, box.h * 0.4),
+                    fitText(lines[1], S.font, box.w * 0.92, box.h * 0.4));
+    }
+    px *= k;
+    var gap = px * 1.15;
+    var y0 = box.y + box.h / 2 - (lines.length - 1) * gap / 2;
+    for (var j = 0; j < lines.length; j++) {
+      drawLine(lines[j], box.x + box.w / 2, y0 + j * gap, px, S.font, col);
+    }
+  }
+
+  function drawBar(txt, col, box, k, frac) {
+    var px = fitDigits(txt, S.font, box.w * 0.9, box.h * 0.54) * k;
+    var barH = Math.max(4, px * 0.17);
+    var gap = px * 0.3;
+    var top = box.y + box.h / 2 - (px + gap + barH) / 2;
+    drawDigits(txt, box.x + box.w / 2, top + px / 2, px, S.font, col);
+    var bx = box.x + box.w * 0.04, bw = box.w * 0.92, by = top + px + gap;
+    ctx.fillStyle = faintColor();
+    roundRect(bx, by, bw, barH, barH / 2); ctx.fill();
+    if (frac > 0) {
+      ctx.fillStyle = col;
+      roundRect(bx, by, Math.max(barH, bw * frac), barH, barH / 2); ctx.fill();
+    }
+  }
+
+  function drawRing(txt, col, box, k, frac) {
+    var cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+    var r = Math.min(box.w, box.h) * 0.44;
+    var lw = Math.max(3, r * 0.15);
+    ctx.lineCap = 'round';
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = faintColor();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    if (frac > 0.001) {
+      ctx.strokeStyle = col;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+      ctx.stroke();
+    }
+    var px = fitDigits(txt, S.font, r * 1.45, r * 0.7) * Math.min(1.3, k);
+    drawDigits(txt, cx, cy, px, S.font, col);
+  }
+
+  function drawDial(col, box, frac) {
+    var cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+    var r = Math.min(box.w, box.h) * 0.46;
+    if (frac > 0.001) {
+      ctx.fillStyle = mix(col, S.bg, 0.68);
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.lineWidth = Math.max(1, r * 0.015);
+    ctx.strokeStyle = faintColor();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineCap = 'round';
+    for (var i = 0; i < 60; i++) {
+      var major = i % 5 === 0;
+      var a = (i * 6 - 90) * Math.PI / 180;
+      var r2 = major ? r * 0.85 : r * 0.93;
+      ctx.strokeStyle = major ? dimColor() : faintColor();
+      ctx.lineWidth = major ? Math.max(1.5, r * 0.026) : Math.max(1, r * 0.014);
+      ctx.beginPath();
+      ctx.moveTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+      ctx.lineTo(cx + r2 * Math.cos(a), cy + r2 * Math.sin(a));
+      ctx.stroke();
+    }
+    var ha = (360 * frac - 90) * Math.PI / 180;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(2, r * 0.034);
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + r * 0.84 * Math.cos(ha), cy + r * 0.84 * Math.sin(ha));
+    ctx.stroke();
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(2, r * 0.055), 0, Math.PI * 2); ctx.fill();
+  }
+
+  // dots that go out one by one — no numbers, low pressure, easy to read
+  function drawPips(col, box, frac) {
+    var n = Math.max(4, Math.min(30, Math.round(S.duration / 30) || 10));
+    var cols = Math.max(1, Math.round(Math.sqrt(n * (box.w / Math.max(1, box.h)))));
+    cols = Math.min(cols, n);
+    var rows = Math.ceil(n / cols);
+    var cw = box.w / cols, ch = box.h / rows;
+    var r = Math.min(cw, ch) * 0.32;
+    var lit = Math.ceil(frac * n);
+    for (var i = 0; i < n; i++) {
+      var cxi = i % cols, cyi = Math.floor(i / cols);
+      var inRow = (cyi === rows - 1) ? (n - cyi * cols) : cols;
+      var offset = (cols - inRow) * cw / 2;
+      var x = box.x + offset + cxi * cw + cw / 2;
+      var y = box.y + cyi * ch + ch / 2;
+      ctx.fillStyle = i < lit ? col : faintColor();
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // ----------------------------------------------------------------- paint
+
+  function paint(force) {
+    var shown = Math.ceil(S.countUp ? up : left);
+    var urgent = running && !S.countUp && left <= 10 && left > -1;
+    var now = Date.now();
+    var flashing = now < flashUntil;
+    if (!force && !urgent && !flashing && shown === lastShown && now - lastPaintAt < 200) return;
+    lastShown = shown; lastPaintAt = now;
+
+    // PowerPoint does not clear the add-in surface between frames, so every
+    // repaint must physically overwrite every pixel. Never use clearRect here.
+    var bg = S.bg, col = activeColor();
+    if (flashing && Math.floor(now / 220) % 2) { var t = bg; bg = col; col = t; }
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    var pad = Math.min(W, H) * 0.05;
+    var box = { x: pad, y: pad, w: W - pad * 2, h: H - pad * 2 };
+
+    if (S.panel !== 'none') {
+      var r = Math.min(box.w, box.h) * 0.09;
+      if (S.panel === 'inset') {
+        ctx.fillStyle = mix(bg, isLight() ? '#000000' : '#FFFFFF', 0.06);
+        roundRect(box.x, box.y, box.w, box.h, r); ctx.fill();
+      } else {
+        ctx.strokeStyle = mix(col, bg, 0.6);
+        ctx.lineWidth = Math.max(1.5, Math.min(W, H) * 0.008);
+        roundRect(box.x + ctx.lineWidth, box.y + ctx.lineWidth,
+                  box.w - ctx.lineWidth * 2, box.h - ctx.lineWidth * 2, r);
+        ctx.stroke();
+      }
+      var inset = Math.min(box.w, box.h) * 0.07;
+      box = { x: box.x + inset, y: box.y + inset,
+              w: box.w - inset * 2, h: box.h - inset * 2 };
+    }
+
+    if (S.label) {
+      var lh = Math.min(box.h * 0.2, box.h * 0.2);
+      var lpx = fitText(S.label, S.font, box.w * 0.94, lh);
+      drawLine(S.label, box.x + box.w / 2, box.y + lpx * 0.62, lpx, S.font, dimColor());
+      var used = lpx * 1.35;
+      box = { x: box.x, y: box.y + used, w: box.w, h: box.h - used };
+    }
+
+    var k = S.scale / 100;
+    var value = S.countUp ? up : left;
+    var frac;
+    if (S.countUp) frac = (up % 60) / 60;
+    else frac = S.duration > 0 ? Math.max(0, Math.min(1, left / S.duration)) : 0;
+
+    var txt = clock(value);
+    if (!S.countUp && left <= 0 && S.end === 'stop') txt = null;
+
+    if (txt === null) {
+      drawWords(S.endMsg || "Time's up", col, box, k);
+    } else if (S.face === 'digital') drawDigital(txt, col, box, k);
+    else if (S.face === 'words') drawWords(S.countUp ? txt : words(left), col, box, k);
+    else if (S.face === 'bar') drawBar(txt, col, box, k, frac);
+    else if (S.face === 'ring') drawRing(txt, col, box, k, frac);
+    else if (S.face === 'dial') drawDial(col, box, frac);
+    else if (S.face === 'pips') drawPips(col, box, frac);
+  }
+
+  // ------------------------------------------------------------- transport
+
+  function tick() {
+    if (!running) return;
+    var now = Date.now();
+    if (S.countUp) {
+      up = (now - startedAt) / 1000;
+    } else {
+      left = (endAt - now) / 1000;
+      if (S.cues && S.duration > 120) {
+        if (!cueHalf && left <= S.duration / 2) { cueHalf = true; beep(1, 660); }
+        if (!cueMin && left <= 60) { cueMin = true; beep(1, 660); }
+      }
+      if (left <= 0 && !chimed) {
+        chimed = true;
+        if (S.flash) flashUntil = now + 1400;
+        if (S.end === 'chime') beep(3, 880);
+        if (S.end === 'stop') {
+          left = 0; running = false;
+          el('btn-main').textContent = 'Start';
+          paint(true);
+          raf = requestAnimationFrame(function again() {
+            if (Date.now() < flashUntil) { paint(true); raf = requestAnimationFrame(again); }
+            else paint(true);
+          });
+          return;
+        }
+      }
+    }
+    paint(false);
+    raf = requestAnimationFrame(tick);
+  }
+
+  function beep(times, freq) {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      for (var i = 0; i < times; i++) {
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        var t = audioCtx.currentTime + i * 0.22;
+        o.type = 'sine';
+        o.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.28, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t); o.stop(t + 0.2);
+      }
+    } catch (e) {}
+  }
+
+  function start() {
+    if (S.countUp) {
+      startedAt = Date.now() - up * 1000;
+    } else {
+      if (left <= 0 && S.end !== 'over') left = S.duration;
+      endAt = Date.now() + left * 1000;
+      chimed = left <= 0;
+    }
+    running = true;
+    el('btn-main').textContent = 'Pause';
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(tick);
+  }
+
+  function pause() {
+    running = false;
+    cancelAnimationFrame(raf);
+    if (S.countUp) up = (Date.now() - startedAt) / 1000;
+    else left = (endAt - Date.now()) / 1000;
+    el('btn-main').textContent = 'Resume';
+    paint(true);
+  }
+
+  function reset() {
+    running = false;
+    cancelAnimationFrame(raf);
+    chimed = false; cueHalf = false; cueMin = false; flashUntil = 0;
+    left = S.duration; up = 0;
+    el('btn-main').textContent = 'Start';
+    paint(true);
+  }
+
+  el('btn-main').onclick = function () { running ? pause() : start(); };
+  el('btn-reset').onclick = reset;
+
+  // ---------------------------------------------------------------- reveal
+
+  var idleTimer = 0;
+  function reveal() {
+    ui.classList.add('show');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () {
+      if (!panel.classList.contains('show')) ui.classList.remove('show');
+    }, 2500);
+  }
+  ['pointermove', 'pointerdown', 'pointerenter'].forEach(function (ev) {
+    document.addEventListener(ev, reveal, { passive: true });
+  });
+  document.addEventListener('pointerleave', function () {
+    if (!panel.classList.contains('show')) ui.classList.remove('show');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); running ? pause() : start(); reveal(); }
+    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); reset(); reveal(); }
+  });
+
+  // ------------------------------------------------------------ persistence
+
+  var officeReady = false;
+  function save() {
+    var json = JSON.stringify(S);
+    try { localStorage.setItem('classtimer', json); } catch (e) {}
+    if (officeReady) {
+      try {
+        Office.context.document.settings.set('classtimer', json);
+        Office.context.document.settings.saveAsync();
+      } catch (e) {}
+    }
+  }
+  function load() {
+    var json = null;
+    if (officeReady) {
+      try { json = Office.context.document.settings.get('classtimer'); } catch (e) {}
+    }
+    if (!json) { try { json = localStorage.getItem('classtimer'); } catch (e) {} }
+    if (!json) return;
+    try {
+      var saved = JSON.parse(json);
+      for (var k in S) if (saved[k] !== undefined) S[k] = saved[k];
+      if (!clampHex(S.bg)) S.bg = '#12161C';   // drops the old 'transparent' value
+    } catch (e) {}
+  }
+
+  // ---------------------------------------------------------------- panel
+
+  function chipSet(host, items, get, set) {
+    host.innerHTML = '';
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.className = 'chip' + (it.swatch ? ' swatch' : '');
+      b.type = 'button';
+      if (it.swatch) { b.style.background = it.swatch; b.setAttribute('aria-label', it.label); }
+      else { b.textContent = it.label; }
+      b.onclick = function () {
+        set(it.value);
+        Array.prototype.forEach.call(host.children, function (c, i) {
+          c.setAttribute('aria-pressed', String(items[i].value === get()));
+        });
+        paint(true); save();
+      };
+      host.appendChild(b);
+    });
+    Array.prototype.forEach.call(host.children, function (c, i) {
+      c.setAttribute('aria-pressed', String(items[i].value === get()));
+    });
+  }
+
+  var PRESETS = [1, 2, 3, 5, 10, 15, 20, 30];
+
+  chipSet(el('presets'),
+    PRESETS.map(function (m) { return { label: m + ' min', value: m * 60 }; }),
+    function () { return S.duration; },
+    function (v) {
+      S.duration = v;
+      el('in-min').value = Math.floor(v / 60);
+      el('in-sec').value = v % 60;
+      reset();
+    });
+
+  chipSet(el('faces'),
+    [{ label: 'Digital', value: 'digital' }, { label: 'Dial', value: 'dial' },
+     { label: 'Ring', value: 'ring' }, { label: 'Bar', value: 'bar' },
+     { label: 'Dots', value: 'pips' }, { label: 'Words', value: 'words' }],
+    function () { return S.face; },
+    function (v) { S.face = v; });
+
+  chipSet(el('fonts'),
+    Object.keys(FONTS).map(function (k) { return { label: FONTS[k].label, value: k }; }),
+    function () { return S.font; },
+    function (v) { S.font = v; });
+
+  chipSet(el('bgs'),
+    SWATCHES.map(function (c) { return { label: c, value: c, swatch: c }; }),
+    function () { return S.bg; },
+    function (v) { setBg(v); });
+
+  chipSet(el('colors'),
+    [{ label: 'Auto', value: 'auto' },
+     { label: '#F4F6F8', value: '#F4F6F8', swatch: '#F4F6F8' },
+     { label: '#12161C', value: '#12161C', swatch: '#12161C' },
+     { label: '#F2A93B', value: '#F2A93B', swatch: '#F2A93B' },
+     { label: '#E8483B', value: '#E8483B', swatch: '#E8483B' },
+     { label: '#4FC98A', value: '#4FC98A', swatch: '#4FC98A' },
+     { label: '#4C9BE8', value: '#4C9BE8', swatch: '#4C9BE8' }],
+    function () { return S.color; },
+    function (v) { S.color = v; });
+
+  chipSet(el('panels'),
+    [{ label: 'None', value: 'none' }, { label: 'Inset', value: 'inset' },
+     { label: 'Outlined', value: 'outline' }],
+    function () { return S.panel; },
+    function (v) { S.panel = v; });
+
+  chipSet(el('modes'),
+    [{ label: 'Count down', value: false }, { label: 'Count up', value: true }],
+    function () { return S.countUp; },
+    function (v) { S.countUp = v; reset(); });
+
+  chipSet(el('ends'),
+    [{ label: 'Stop', value: 'stop' }, { label: 'Overtime', value: 'over' },
+     { label: 'Overtime + chime', value: 'chime' }],
+    function () { return S.end; },
+    function (v) { S.end = v; });
+
+  // extras are independent toggles, so each chip owns its own state
+  (function () {
+    var host = el('extras');
+    var items = [
+      { label: 'Shadow', key: 'shadow' },
+      { label: 'Flash at zero', key: 'flash' },
+      { label: 'Halfway + 1 min beep', key: 'cues' }
+    ];
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.className = 'chip'; b.type = 'button'; b.textContent = it.label;
+      b.setAttribute('aria-pressed', String(!!S[it.key]));
+      b.onclick = function () {
+        S[it.key] = !S[it.key];
+        b.setAttribute('aria-pressed', String(!!S[it.key]));
+        paint(true); save();
+      };
+      host.appendChild(b);
+    });
+  })();
+
+  function markBg() {
+    Array.prototype.forEach.call(el('bgs').children, function (c, i) {
+      c.setAttribute('aria-pressed', String(SWATCHES[i] === S.bg));
+    });
+  }
+  function setBg(hex) {
+    var v = clampHex(hex);
+    if (!v) return false;
+    S.bg = v;
+    document.body.style.background = v;
+    el('in-hex').value = v;
+    el('in-pick').value = v;
+    el('in-hex').classList.remove('bad');
+    markBg();
+    paint(true);
+    return true;
+  }
+
+  el('in-hex').oninput = function () {
+    var ok = clampHex(this.value);
+    this.classList.toggle('bad', !ok);
+    if (ok) { setBg(ok); save(); }
+  };
+  el('in-pick').oninput = function () { setBg(this.value); };
+  el('in-pick').onchange = save;
+
+  function customDuration() {
+    var m = Math.max(0, Math.min(180, parseInt(el('in-min').value, 10) || 0));
+    var s = Math.max(0, Math.min(59, parseInt(el('in-sec').value, 10) || 0));
+    S.duration = Math.max(1, m * 60 + s);
+    Array.prototype.forEach.call(el('presets').children, function (c, i) {
+      c.setAttribute('aria-pressed', String(PRESETS[i] * 60 === S.duration));
+    });
+    reset(); save();
+  }
+  el('in-min').onchange = customDuration;
+  el('in-sec').onchange = customDuration;
+
+  el('in-scale').oninput = function () {
+    S.scale = +this.value;
+    el('v-scale').textContent = S.scale + '%';
+    paint(true);
+  };
+  el('in-scale').onchange = save;
+
+  el('in-warn').oninput = function () {
+    S.warn = +this.value;
+    el('v-warn').textContent = S.warn === 0 ? 'off' : S.warn + 's';
+    paint(true);
+  };
+  el('in-warn').onchange = save;
+
+  el('in-label').oninput = function () { S.label = this.value; paint(true); };
+  el('in-label').onchange = save;
+  el('in-endmsg').oninput = function () { S.endMsg = this.value; paint(true); };
+  el('in-endmsg').onchange = save;
+
+  el('btn-open').onclick = function () { panel.classList.add('show'); ui.classList.add('show'); };
+  el('btn-close').onclick = function () { panel.classList.remove('show'); save(); reveal(); };
+
+  // ------------------------------------------------------------------ boot
+
+  function boot() {
+    load();
+    el('in-min').value = Math.floor(S.duration / 60);
+    el('in-sec').value = S.duration % 60;
+    el('in-scale').value = S.scale;
+    el('v-scale').textContent = S.scale + '%';
+    el('in-warn').value = S.warn;
+    el('v-warn').textContent = S.warn === 0 ? 'off' : S.warn + 's';
+    el('in-label').value = S.label;
+    el('in-endmsg').value = S.endMsg;
+    setBg(S.bg);
+
+    Array.prototype.forEach.call(el('presets').children, function (c, i) {
+      c.setAttribute('aria-pressed', String(PRESETS[i] * 60 === S.duration));
+    });
+
+    left = S.duration; up = 0;
+    resize();
+    paint(true);
+    reveal();
+  }
+
+  function onResize() { resize(); paint(true); }
+  if (window.ResizeObserver) new ResizeObserver(onResize).observe(stage);
+  else window.addEventListener('resize', onResize);
+
+  if (typeof Office !== 'undefined' && Office.onReady) {
+    Office.onReady(function () { officeReady = true; boot(); });
+  } else { boot(); }
+})();
+</script>
+</body>
+</html>
